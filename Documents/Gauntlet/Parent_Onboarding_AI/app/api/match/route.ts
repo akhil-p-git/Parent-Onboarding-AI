@@ -22,16 +22,20 @@ export async function POST(requestBody: Request) {
     logger.info('Finding matches', { founderId, userId: session.user?.id });
 
     // Fetch founder data
-    const founder = await airtableClient.getFounderById(founderId);
-    if (!founder) {
+    const founderRaw = await airtableClient.getFounderById(founderId);
+    if (!founderRaw) {
       return NextResponse.json({ error: 'Founder not found' }, { status: 404 });
     }
 
+    const founder = founderRaw as any;
+
     // Fetch all mentors
-    const mentors = await airtableClient.getMentors();
-    if (!mentors || mentors.length === 0) {
+    const mentorsRaw = await airtableClient.getMentors();
+    if (!mentorsRaw || mentorsRaw.length === 0) {
       return NextResponse.json({ error: 'No mentors available' }, { status: 404 });
     }
+
+    const mentors = mentorsRaw as any[];
 
     // Fetch availability for all mentors
     const availabilityMap = new Map();
@@ -42,7 +46,14 @@ export async function POST(requestBody: Request) {
     }
 
     // Run matching algorithm
-    const matches = matchingEngine.getTopMatches(founder, mentors, availabilityMap, 10);
+    const founderData = {
+      id: founder.id || founderId,
+      targetExpertise: founder.targetExpertise || [],
+      industryFocus: founder.industryFocus || 'General',
+      stage: founder.stage || 'Seed',
+    };
+
+    const matches = matchingEngine.getTopMatches(founderData, mentors, availabilityMap, 10);
 
     logger.logEvent('matches_found', { founderId, matchCount: matches.length });
 

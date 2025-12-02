@@ -85,7 +85,7 @@ export default function BookingPage() {
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-bold mb-4">Step 1: Find Mentors</h2>
             <p className="text-gray-600 mb-6">
-              We'll find mentors that match your needs based on expertise, industry, and company stage.
+              We&apos;ll find mentors that match your needs based on expertise, industry, and company stage.
             </p>
             <button
               onClick={handleFindMatches}
@@ -135,7 +135,7 @@ export default function BookingPage() {
         {step === 3 && (
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-bold mb-4">Step 3: Choose Time</h2>
-            <p className="text-gray-600 mb-4">Select when you'd like to meet (demo: selecting any date)</p>
+            <p className="text-gray-600 mb-4">Select when you&apos;d like to meet (demo: selecting any date)</p>
             <input
               type="datetime-local"
               value={selectedTime}

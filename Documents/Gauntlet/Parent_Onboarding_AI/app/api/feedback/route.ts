@@ -13,9 +13,9 @@ export async function POST(requestBody: Request) {
 
     const { sessionId, score, comment } = await requestBody.json();
 
-    logger.info('Feedback submitted', { sessionId, score, userId: session.user?.id });
+    logger.info('Feedback submitted', { sessionId, score, comment, userId: session.user?.id });
 
-    logger.logEvent('feedback_submitted', { sessionId, score, userId: session.user?.id });
+    logger.logEvent('feedback_submitted', { sessionId, score, comment, userId: session.user?.id });
 
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (error) {

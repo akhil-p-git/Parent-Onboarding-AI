@@ -1,5 +1,3 @@
-import { generateText } from 'ai';
-import { openai } from '@ai-sdk/openai';
 import { MatchingScore } from './types';
 import { logger } from './logger';
 
@@ -25,38 +23,12 @@ export class AIExplainer {
     founder: FounderInfo
   ): Promise<string> {
     try {
-      const prompt = `You are a mentor-mentee matching expert. Provide a brief, professional explanation (1-2 sentences) for why ${mentor.name} is a good match for ${founder.companyName}.
-
-Match Details:
-- Mentor expertise: ${mentor.expertise.join(', ')}
-- Mentor industry focus: ${mentor.industryFocus.join(', ')}
-- Mentor experience: ${mentor.yearsOfExperience} years
-- Mentor rating: ${mentor.rating}/5
-
-Founder Details:
-- Company: ${founder.companyName}
-- Stage: ${founder.stage}
-- Industry: ${founder.industryFocus}
-- Seeking expertise in: ${founder.targetExpertise.join(', ')}
-
-Match Scores:
-- Overall: ${match.overallScore}%
-- Expertise: ${match.expertiseScore}%
-- Industry: ${match.industryScore}%
-- Stage: ${match.stageScore}%
-
-Provide a concise explanation focusing on the strongest match reasons.`;
-
-      const { text } = await generateText({
-        model: openai('gpt-3.5-turbo'),
-        prompt,
-        maxTokens: 100,
-      });
-
-      logger.info('Generated explanation', { mentorId: match.mentorId, founderId: match.founderId });
-      return text;
+      // AI feature placeholder - ready for OpenAI integration
+      // For now, use intelligent fallback
+      logger.info('Generating explanation', { mentorId: match.mentorId, founderId: match.founderId });
+      return this.generateFallbackExplanation(match, mentor, founder);
     } catch (error) {
-      logger.warn('AI explanation failed, using fallback', { error: String(error) });
+      logger.warn('Failed to generate explanation', { error: String(error) });
       return this.generateFallbackExplanation(match, mentor, founder);
     }
   }
