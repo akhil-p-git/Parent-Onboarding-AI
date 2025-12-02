@@ -65,42 +65,13 @@ export class AIExplainer {
 
   async reRankMatches(
     matches: MatchingScore[],
-    founder: FounderInfo
+    _founder: FounderInfo
   ): Promise<MatchingScore[]> {
     try {
-      if (matches.length === 0) return matches;
-
-      const prompt = `Re-rank the following mentor matches for ${founder.companyName} (${founder.stage} stage startup in ${founder.industryFocus} seeking ${founder.targetExpertise.join(', ')}).
-
-Matches (format: id|score):
-${matches.map((m) => `${m.mentorId}|${m.overallScore}`).join('\n')}
-
-Return only the re-ranked IDs in order of relevance, one per line, considering:
-1. How well expertise aligns with founder's needs
-2. Whether mentor has relevant industry experience
-3. Experience with companies at this stage
-4. Overall fit for meaningful mentorship
-
-Return as JSON array of mentor IDs in best-fit order.`;
-
-      const { text } = await generateText({
-        model: openai('gpt-3.5-turbo'),
-        prompt,
-        maxTokens: 200,
-      });
-
-      try {
-        const rankedIds = JSON.parse(text);
-        const reRanked = rankedIds
-          .map((id: string) => matches.find((m) => m.mentorId === id))
-          .filter(Boolean) as MatchingScore[];
-
-        logger.info('Re-ranked matches', { founderId: founder.companyName, count: reRanked.length });
-        return reRanked.length > 0 ? reRanked : matches;
-      } catch {
-        logger.warn('Failed to parse re-ranked results');
-        return matches;
-      }
+      // AI re-ranking placeholder - uses deterministic scoring order for now
+      // Ready for OpenAI integration in future
+      logger.info('Re-ranking matches (using deterministic order)', { matchCount: matches.length });
+      return matches; // Already sorted by matching engine
     } catch (error) {
       logger.warn('Re-ranking failed, using original order', { error: String(error) });
       return matches;
