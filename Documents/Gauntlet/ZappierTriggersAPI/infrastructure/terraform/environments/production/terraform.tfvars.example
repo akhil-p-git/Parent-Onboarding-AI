@@ -1,0 +1,26 @@
+# Production Environment - Example Variables
+# Copy this file to terraform.tfvars and fill in the values
+# NEVER commit terraform.tfvars with sensitive values
+
+aws_region   = "us-east-1"
+project_name = "zapier-triggers"
+environment  = "production"
+
+# Container image (update via CI/CD)
+container_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/zapier-triggers:latest"
+
+# SSL Certificate (required)
+certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# Custom domain (required for production)
+route53_zone_id = "Z1234567890ABC"
+domain_name     = "api.example.com"
+
+# SNS topic for alarms (required)
+alarm_sns_topic_arn = "arn:aws:sns:us-east-1:123456789012:production-alarms"
+
+# WAF (strongly recommended for production)
+waf_web_acl_arn = "arn:aws:wafv2:us-east-1:123456789012:regional/webacl/production-waf/xxxxxxxx"
+
+# ALB access logs bucket
+alb_access_logs_bucket = "zapier-triggers-production-alb-logs"

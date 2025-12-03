@@ -1,0 +1,156 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: #0a0a0f;
+}
+
+body {
+  margin: 0;
+  font-family: 'IBM Plex Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #0a0a0f;
+  color: #cacad8;
+  min-height: 100vh;
+}
+
+/* Scanline overlay effect */
+.scanlines::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.1) 2px,
+    rgba(0, 0, 0, 0.1) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.3;
+}
+
+/* Glow effects */
+.glow-volt {
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.3),
+              0 0 40px rgba(0, 255, 136, 0.1);
+}
+
+.glow-pulse {
+  box-shadow: 0 0 20px rgba(255, 51, 102, 0.3),
+              0 0 40px rgba(255, 51, 102, 0.1);
+}
+
+.glow-arc {
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.3),
+              0 0 40px rgba(0, 212, 255, 0.1);
+}
+
+/* Text glow */
+.text-glow-volt {
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.5),
+               0 0 20px rgba(0, 255, 136, 0.3);
+}
+
+.text-glow-pulse {
+  text-shadow: 0 0 10px rgba(255, 51, 102, 0.5),
+               0 0 20px rgba(255, 51, 102, 0.3);
+}
+
+.text-glow-arc {
+  text-shadow: 0 0 10px rgba(0, 212, 255, 0.5),
+               0 0 20px rgba(0, 212, 255, 0.3);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #12121a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a2a38;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4a4a5a;
+}
+
+/* Grid background pattern */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(42, 42, 56, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(42, 42, 56, 0.3) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Noise texture overlay */
+.noise::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  opacity: 0.03;
+  pointer-events: none;
+}
+
+/* Status indicator animations */
+@keyframes blink {
+  0%, 50%, 100% { opacity: 1; }
+  25%, 75% { opacity: 0.4; }
+}
+
+.blink {
+  animation: blink 2s infinite;
+}
+
+/* Event stream animation */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* Mono text styling */
+.mono {
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: -0.02em;
+}
+
+/* Card hover effect */
+.card-hover {
+  transition: all 0.2s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+}

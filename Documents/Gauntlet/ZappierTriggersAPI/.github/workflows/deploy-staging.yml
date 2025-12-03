@@ -1,0 +1,185 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Docker image tag to deploy'
+        required: false
+        default: 'latest'
+
+env:
+  AWS_REGION: us-east-1
+  ECS_CLUSTER: zapier-triggers-staging
+  ECS_SERVICE: triggers-api-staging
+  ECS_TASK_DEFINITION: .aws/task-definition-staging.json
+  CONTAINER_NAME: triggers-api
+
+jobs:
+  deploy:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging-triggers.zapier.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Determine image tag
+        id: image-tag
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ env.ECS_SERVICE }} \
+            --query taskDefinition > task-definition.json
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.login-ecr.outputs.registry }}/zapier-triggers-api:${{ steps.image-tag.outputs.tag }}
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Run database migrations
+        run: |
+          aws ecs run-task \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --task-definition ${{ env.ECS_SERVICE }}-migrations \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.SUBNET_IDS }}],securityGroups=[${{ secrets.SECURITY_GROUP_ID }}],assignPublicIp=DISABLED}"
+
+      - name: Verify deployment health
+        run: |
+          echo "Waiting for service to stabilize..."
+          sleep 30
+
+          # Check health endpoint
+          HEALTH_URL="https://staging-triggers.zapier.com/health"
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_URL || echo "000")
+
+          if [ "$RESPONSE" != "200" ]; then
+            echo "Health check failed with status: $RESPONSE"
+            exit 1
+          fi
+
+          echo "Deployment verified successfully!"
+
+      - name: Notify Slack on success
+        if: success()
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "Staging deployment successful",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":white_check_mark: *Staging Deployment Successful*\n*Repository:* ${{ github.repository }}\n*Commit:* ${{ github.sha }}\n*Author:* ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "Staging deployment failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":x: *Staging Deployment Failed*\n*Repository:* ${{ github.repository }}\n*Commit:* ${{ github.sha }}\n*Author:* ${{ github.actor }}\n*Run:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+  smoke-test:
+    name: Run Smoke Tests
+    runs-on: ubuntu-latest
+    needs: deploy
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: |
+          pip install httpx pytest pytest-asyncio
+
+      - name: Run smoke tests
+        env:
+          API_BASE_URL: https://staging-triggers.zapier.com
+          API_KEY: ${{ secrets.STAGING_API_KEY }}
+        run: |
+          python -c "
+          import httpx
+          import sys
+
+          base_url = 'https://staging-triggers.zapier.com'
+
+          # Test health endpoint
+          r = httpx.get(f'{base_url}/health')
+          assert r.status_code == 200, f'Health check failed: {r.status_code}'
+          print('Health check passed')
+
+          # Test readiness endpoint
+          r = httpx.get(f'{base_url}/ready')
+          assert r.status_code in [200, 503], f'Readiness check failed: {r.status_code}'
+          print('Readiness check passed')
+
+          # Test API docs
+          r = httpx.get(f'{base_url}/openapi.json')
+          assert r.status_code == 200, f'OpenAPI check failed: {r.status_code}'
+          print('OpenAPI check passed')
+
+          print('All smoke tests passed!')
+          "

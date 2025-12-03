@@ -1,0 +1,22 @@
+# Staging Environment - Example Variables
+# Copy this file to terraform.tfvars and fill in the values
+
+aws_region   = "us-east-1"
+project_name = "zapier-triggers"
+environment  = "staging"
+
+# Container image (update after building)
+container_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/zapier-triggers:staging"
+
+# SSL Certificate (required for HTTPS)
+certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# Custom domain
+route53_zone_id = "Z1234567890ABC"
+domain_name     = "api-staging.example.com"
+
+# SNS topic for alarms
+alarm_sns_topic_arn = "arn:aws:sns:us-east-1:123456789012:staging-alarms"
+
+# WAF (optional)
+# waf_web_acl_arn = "arn:aws:wafv2:us-east-1:123456789012:regional/webacl/staging-waf/xxxxxxxx"

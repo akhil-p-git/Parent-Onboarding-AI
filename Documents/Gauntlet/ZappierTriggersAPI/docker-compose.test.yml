@@ -1,0 +1,56 @@
+# Docker Compose for Testing
+
+version: "3.8"
+
+services:
+  # Test Database
+  test-db:
+    image: postgres:15-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=triggers_test_db
+    tmpfs:
+      - /var/lib/postgresql/data  # Use memory for faster tests
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  # Test Redis
+  test-redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  # Test Runner
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    environment:
+      - APP_ENV=test
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@test-db:5432/triggers_test_db
+      - REDIS_URL=redis://test-redis:6379/0
+    depends_on:
+      test-db:
+        condition: service_healthy
+      test-redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app/backend:ro
+      - ./tests:/app/tests:ro
+      - ./pyproject.toml:/app/pyproject.toml:ro
+    command: pytest tests/ -v --cov=app --cov-report=term-missing
+    working_dir: /app

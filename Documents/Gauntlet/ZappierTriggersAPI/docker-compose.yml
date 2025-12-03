@@ -1,0 +1,112 @@
+# Zapier Triggers API - Docker Compose for Local Development
+
+version: "3.8"
+
+services:
+  # API Service
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    ports:
+      - "8001:8000"
+    environment:
+      - APP_ENV=development
+      - DEBUG=true
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/triggers_db
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/app:/app/app:ro  # Mount for development hot reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - triggers-network
+
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=triggers_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - triggers-network
+
+  # Redis Cache & Queue
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - triggers-network
+
+  # LocalStack (AWS Services Emulator)
+  localstack:
+    image: localstack/localstack:3.0
+    ports:
+      - "4566:4566"  # LocalStack Gateway
+      - "4510-4559:4510-4559"  # External services
+    environment:
+      - SERVICES=sqs,s3
+      - DEBUG=1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh:ro
+    networks:
+      - triggers-network
+
+  # Worker Service (for webhook delivery)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    environment:
+      - APP_ENV=development
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/triggers_db
+      - REDIS_URL=redis://redis:6379/0
+      - SQS_EVENTS_QUEUE_URL=http://localstack:4566/000000000000/events-queue
+      - SQS_DELIVERY_QUEUE_URL=http://localstack:4566/000000000000/delivery-queue
+    depends_on:
+      - db
+      - redis
+      - localstack
+    command: python -m app.workers.delivery_worker
+    networks:
+      - triggers-network
+    profiles:
+      - worker  # Only start with --profile worker
+
+networks:
+  triggers-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  localstack_data:

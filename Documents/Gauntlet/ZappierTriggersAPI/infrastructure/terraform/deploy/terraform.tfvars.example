@@ -1,0 +1,19 @@
+# Copy this to terraform.tfvars and customize
+
+aws_region  = "us-east-1"
+environment = "dev"
+
+# Your domain (apps will be at app1.yourdomain.com, app2.yourdomain.com, etc)
+domain = "yourdomain.com"
+
+# SSL Certificate ARN from AWS Certificate Manager (optional for dev)
+# Create one at: https://console.aws.amazon.com/acm/
+certificate_arn = ""
+
+# Instance sizes (these are the smallest/cheapest)
+rds_instance_class = "db.t3.micro"   # ~$15/month
+redis_node_type    = "cache.t3.micro" # ~$12/month
+
+# For production, consider:
+# rds_instance_class = "db.t3.small"   # ~$30/month
+# redis_node_type    = "cache.t3.small" # ~$24/month

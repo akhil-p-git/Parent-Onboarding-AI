@@ -1,0 +1,317 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Docker image tag to deploy (SHA or version tag)'
+        required: true
+      confirm_deployment:
+        description: 'Type "DEPLOY" to confirm production deployment'
+        required: true
+
+env:
+  AWS_REGION: us-east-1
+  ECS_CLUSTER: zapier-triggers-production
+  ECS_SERVICE: triggers-api-production
+  CONTAINER_NAME: triggers-api
+
+jobs:
+  validate:
+    name: Validate Deployment Request
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm_deployment }}" != "DEPLOY" ]; then
+            echo "Deployment not confirmed. Please type 'DEPLOY' to confirm."
+            exit 1
+          fi
+
+      - name: Validate image tag format
+        run: |
+          TAG="${{ github.event.inputs.image_tag }}"
+          if [[ ! "$TAG" =~ ^[a-f0-9]{40}$ ]] && [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid image tag format. Must be a SHA or semver (v1.2.3)"
+            exit 1
+          fi
+
+  pre-deploy-checks:
+    name: Pre-deployment Checks
+    runs-on: ubuntu-latest
+    needs: validate
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Verify image exists
+        run: |
+          aws ecr describe-images \
+            --repository-name zapier-triggers-api \
+            --image-ids imageTag=${{ github.event.inputs.image_tag }} \
+            || (echo "Image not found in ECR" && exit 1)
+
+      - name: Check staging deployment status
+        run: |
+          echo "Verifying staging is healthy before production deployment..."
+          STAGING_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" https://staging-triggers.zapier.com/health)
+          if [ "$STAGING_HEALTH" != "200" ]; then
+            echo "WARNING: Staging environment is not healthy (status: $STAGING_HEALTH)"
+            echo "Proceeding with caution..."
+          fi
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: pre-deploy-checks
+    environment:
+      name: production
+      url: https://triggers.zapier.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Download current task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ env.ECS_SERVICE }} \
+            --query taskDefinition > task-definition.json
+
+      - name: Backup current task definition
+        run: |
+          cp task-definition.json task-definition-backup.json
+          echo "Backed up current task definition"
+
+      - name: Update task definition with new image
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.login-ecr.outputs.registry }}/zapier-triggers-api:${{ github.event.inputs.image_tag }}
+
+      - name: Deploy to ECS with rolling update
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+          wait-for-minutes: 15
+
+      - name: Run database migrations
+        run: |
+          echo "Running database migrations..."
+          aws ecs run-task \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --task-definition ${{ env.ECS_SERVICE }}-migrations \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.PROD_SUBNET_IDS }}],securityGroups=[${{ secrets.PROD_SECURITY_GROUP_ID }}],assignPublicIp=DISABLED}"
+
+      - name: Verify deployment
+        id: verify
+        run: |
+          echo "Verifying production deployment..."
+          sleep 60
+
+          # Multiple health check attempts
+          for i in {1..5}; do
+            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://triggers.zapier.com/health)
+            if [ "$RESPONSE" == "200" ]; then
+              echo "Health check passed on attempt $i"
+              echo "status=success" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "Health check attempt $i failed with status: $RESPONSE"
+            sleep 10
+          done
+
+          echo "Health checks failed after 5 attempts"
+          echo "status=failed" >> $GITHUB_OUTPUT
+          exit 1
+
+      - name: Create deployment record
+        if: success()
+        run: |
+          echo "Recording deployment..."
+          echo "Image: ${{ github.event.inputs.image_tag }}"
+          echo "Deployed by: ${{ github.actor }}"
+          echo "Time: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+      - name: Notify Slack on success
+        if: success()
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "Production deployment successful",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":rocket: *Production Deployment Successful*\n*Service:* Zapier Triggers API\n*Image:* ${{ github.event.inputs.image_tag }}\n*Deployed by:* ${{ github.actor }}\n*Environment:* Production"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "Production deployment FAILED",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":rotating_light: *Production Deployment FAILED*\n*Service:* Zapier Triggers API\n*Image:* ${{ github.event.inputs.image_tag }}\n*Deployed by:* ${{ github.actor }}\n*Run:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+  rollback:
+    name: Rollback (on failure)
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: failure()
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Rollback to previous version
+        run: |
+          echo "Initiating rollback..."
+
+          # Get the previous task definition revision
+          PREVIOUS_TASK_DEF=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --query 'services[0].deployments[?status==`ACTIVE`].taskDefinition' \
+            --output text | head -1)
+
+          if [ -n "$PREVIOUS_TASK_DEF" ]; then
+            echo "Rolling back to: $PREVIOUS_TASK_DEF"
+            aws ecs update-service \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --service ${{ env.ECS_SERVICE }} \
+              --task-definition $PREVIOUS_TASK_DEF \
+              --force-new-deployment
+          else
+            echo "Could not determine previous task definition for rollback"
+            exit 1
+          fi
+
+      - name: Notify Slack about rollback
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "Production rollback initiated",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":warning: *Production Rollback Initiated*\n*Service:* Zapier Triggers API\n*Reason:* Deployment verification failed\n*Action:* Automatic rollback to previous version"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+  post-deploy-tests:
+    name: Post-deployment Tests
+    runs-on: ubuntu-latest
+    needs: deploy
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: pip install httpx
+
+      - name: Run production smoke tests
+        env:
+          API_BASE_URL: https://triggers.zapier.com
+        run: |
+          python -c "
+          import httpx
+          import time
+
+          base_url = 'https://triggers.zapier.com'
+
+          print('Running production smoke tests...')
+
+          # Test health endpoint
+          r = httpx.get(f'{base_url}/health', timeout=30)
+          assert r.status_code == 200, f'Health check failed: {r.status_code}'
+          health_data = r.json()
+          assert health_data.get('status') in ['healthy', 'degraded'], 'Unexpected health status'
+          print(f'Health: {health_data.get(\"status\")}')
+
+          # Test readiness
+          r = httpx.get(f'{base_url}/ready', timeout=30)
+          assert r.status_code == 200, f'Readiness failed: {r.status_code}'
+          print('Readiness: OK')
+
+          # Test liveness
+          r = httpx.get(f'{base_url}/live', timeout=30)
+          assert r.status_code == 200, f'Liveness failed: {r.status_code}'
+          print('Liveness: OK')
+
+          # Test metrics endpoint
+          r = httpx.get(f'{base_url}/api/v1/health/metrics', timeout=30)
+          assert r.status_code == 200, f'Metrics failed: {r.status_code}'
+          print('Metrics: OK')
+
+          print('All production smoke tests passed!')
+          "

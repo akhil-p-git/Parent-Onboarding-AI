@@ -1,0 +1,67 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "triggers-cli"
+version = "1.0.0"
+description = "Command-line tool for the Zapier Triggers API"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Zapier Engineering" },
+]
+keywords = ["zapier", "triggers", "cli", "webhooks", "events"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+]
+
+dependencies = [
+    "typer[all]>=0.9.0",
+    "httpx>=0.26.0",
+    "rich>=13.7.0",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.1.0",
+    "httpx-sse>=0.4.0",
+    "aiofiles>=23.2.1",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "respx>=0.20.0",
+]
+
+[project.scripts]
+triggers = "triggers_cli.main:app"
+triggers-cli = "triggers_cli.main:app"
+
+[project.urls]
+Documentation = "https://github.com/zapier/triggers-api#readme"
+Issues = "https://github.com/zapier/triggers-api/issues"
+Source = "https://github.com/zapier/triggers-api"
+
+[tool.hatch.build.targets.wheel]
+packages = ["triggers_cli"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]

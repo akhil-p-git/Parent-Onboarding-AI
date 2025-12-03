@@ -1,0 +1,19 @@
+# Development Environment - Example Variables
+# Copy this file to terraform.tfvars and fill in the values
+
+aws_region   = "us-east-1"
+project_name = "zapier-triggers"
+environment  = "dev"
+
+# Container image (update after building)
+container_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/zapier-triggers:dev"
+
+# SSL Certificate (required for HTTPS)
+certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# Optional: Custom domain
+# route53_zone_id = "Z1234567890ABC"
+# domain_name     = "api-dev.example.com"
+
+# Optional: SNS topic for alarms
+# alarm_sns_topic_arn = "arn:aws:sns:us-east-1:123456789012:dev-alarms"
